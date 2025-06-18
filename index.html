@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>이고그램 설문지</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; }
+    .notice-box { background: #ffffff; border-left: 5px solid #007bff; padding: 15px; margin-bottom: 20px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+    .form-section { background: #ffffff; padding: 15px; margin-bottom: 20px; box-shadow: 0 0 5px rgba(0,0,0,0.05); }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+    .form-group input, .form-group select { width: 100%; padding: 8px; box-sizing: border-box; }
+    table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 20px; }
+    th, td { padding: 12px; border: 1px solid #dee2e6; text-align: center; }
+    th { background-color: #007bff; color: white; }
+    tr:nth-child(even) { background-color: #f2f2f2; }
+    .scale-label { font-size: 0.8em; display: block; margin-top: 5px; color: #555; }
+    .submit-btn { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; cursor: pointer; }
+    .result-box { background: #fff; padding: 15px; margin-top: 20px; border-left: 5px solid #28a745; display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="notice-box">
+    이 검사는 자아상태의 구조를 알아보려는 것입니다. 아래의 문항을 읽고, 너무 깊게 생각하지 말고, 현재 자신을 나타내는 정도를 보기에서 골라 해당되는 것의 점수를 오른쪽 공란에 기입하세요. 자신이 이상적으로 바라는 것에 답하지 마시고, 전체 문항을 15분 안에 하셔야 정확도가 높습니다.
+  </div>
+
+  <div class="notice-box">
+    언제나 그렇다(매우 긍정): 5 / 자주 그렇다(약간 긍정): 4 / 그저 그렇다(중립): 3 / 가끔 그렇다(약간 부정): 2 / 전혀 그렇지 않다(매우 부정): 1
+  </div>
+
+  <div class="form-section">
+    <div class="form-group">
+      <label for="name">이름</label>
+      <input type="text" id="name" name="name">
+    </div>
+    <div class="form-group">
+      <label for="gender">성별</label>
+      <select id="gender" name="gender">
+        <option value="">선택</option>
+        <option value="남자">남자</option>
+        <option value="여자">여자</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="birth">생년월일</label>
+      <input type="date" id="birth" name="birth">
+    </div>
+  </div>
+
+  <form id="surveyForm">
+    <table>
+      <thead>
+        <tr>
+          <th>번호</th>
+          <th>문항 내용</th>
+          <th>
+            5<br><span class="scale-label">언제나 그렇다</span>
+          </th>
+          <th>
+            4<br><span class="scale-label">자주 그렇다</span>
+          </th>
+          <th>
+            3<br><span class="scale-label">그저 그렇다</span>
+          </th>
+          <th>
+            2<br><span class="scale-label">가끔 그렇다</span>
+          </th>
+          <th>
+            1<br><span class="scale-label">전혀 그렇지 않다</span>
+          </th>
+          <th>분류</th>
+        </tr>
+      </thead>
+      <tbody id="questionTable"></tbody>
+    </table>
+    <button type="button" class="submit-btn" onclick="autoFill()">자동 입력</button>
+    <button type="button" class="submit-btn" onclick="showResults()">결과 확인</button>
+    <button type="button" class="submit-btn" onclick="calculateScores()">제출하기</button>
+  </form>
+
+  <div class="result-box" id="resultBox">
+    <h3>채점 결과</h3>
+    <div id="scoreResult"></div>
+    <canvas id="scoreChart" width="400" height="200"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <script>
+    const questions = [];
+
+    fetch("questions.json")
+      .then(response => response.json())
+      .then(data => {
+        questions.push(...data);
+        renderQuestions();
+      })
+      .catch(err => {
+        document.getElementById('questionTable').innerHTML = '<tr><td colspan="7">문항을 불러올 수 없습니다.</td></tr>';
+        console.error("문항 로딩 실패:", err);
+      });
+
+    function renderQuestions() {
+      const table = document.getElementById('questionTable');
+      table.innerHTML = '';
+      questions.forEach(q => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${q.번호}</td>
+          <td>${q.내용}</td>
+          ${[5,4,3,2,1].map(v => `<td><label><input type='radio' name='q${q.번호}' value='${v}'><div class='scale-label'>${getLabel(v)}</div></label></td>`).join('')}
+          <td>${q.분류}</td>
+        `;
+        table.appendChild(row);
+      });
+    }
+
+    function getLabel(score) {
+      switch(score) {
+        case 5: return "언제나 그렇다";
+        case 4: return "자주 그렇다";
+        case 3: return "그저 그렇다";
+        case 2: return "가끔 그렇다";
+        case 1: return "전혀 그렇지 않다";
+      }
+    }
+
+    function showResults() {
+      const name = document.getElementById('name').value.trim();
+      const gender = document.getElementById('gender').value;
+      const birth = document.getElementById('birth').value;
+
+      if (!name || !gender || !birth) {
+        alert("이름, 성별, 생년월일을 모두 입력해 주세요.");
+        return;
+      }
+
+      const scores = {};
+      let unanswered = [];
+
+      questions.forEach(q => {
+        const val = document.querySelector(`input[name='q${q.번호}']:checked`);
+        if (!val) {
+          unanswered.push(q.번호);
+        } else {
+          scores[q.분류] = (scores[q.분류] || 0) + parseInt(val.value);
+        }
+      });
+
+      if (unanswered.length > 0) {
+        alert(`다음 문항에 응답하지 않았습니다: ${unanswered.join(', ')}`);
+        return;
+      }
+
+      const resultBox = document.getElementById('resultBox');
+      const resultArea = document.getElementById('scoreResult');
+      resultArea.innerHTML = `
+        <p><strong>이름:</strong> ${name}</p>
+        <p><strong>성별:</strong> ${gender}</p>
+        <p><strong>생년월일:</strong> ${birth}</p>
+        <hr>
+        ` +
+        ['CP','NP','A','FC','AC'].map(k => `<p><strong>${k}</strong>: ${scores[k] || 0}점</p>`).join('');
+      resultBox.style.display = 'block';
+
+      window.resultsConfirmed = true;
+
+      const chartCanvas = document.getElementById('scoreChart');
+      const chartCtx = chartCanvas.getContext('2d');
+      chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+      new Chart(chartCanvas, {
+        type: 'line', // 꺾은선 그래프로 명확하게 지정
+        data: {
+          labels: ['CP','NP','A','FC','AC'],
+          datasets: [{
+            label: '분류별 점수',
+            data: ['CP','NP','A','FC','AC'].map(k => scores[k] || 0),
+            borderColor: '#28a745',
+            fill: false,
+            tension: 0
+          }]
+        },
+        options: {
+          animation: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              min: 0,
+              max: 50,
+              ticks: {
+                stepSize: 2
+              }
+            }
+          },
+          plugins: {
+            datalabels: {
+              anchor: 'end',
+              align: 'top',
+              color: '#000',
+              font: {
+                weight: 'bold'
+              },
+              formatter: function(value) {
+                return value;
+              }
+            }
+          }
+        },
+        plugins: [ChartDataLabels]
+      });
+    }
+
+    function calculateScores() {
+      if (!window.resultsConfirmed) {
+        alert("먼저 '결과 확인' 버튼을 눌러주세요.");
+        return;
+      }
+
+      const name = document.getElementById('name').value.trim();
+      const gender = document.getElementById('gender').value;
+      const birth = document.getElementById('birth').value;
+
+      if (!name || !gender || !birth) {
+        alert("이름, 성별, 생년월일을 모두 입력해 주세요.");
+        return;
+      }
+
+      const scores = {};
+      let unanswered = [];
+
+      questions.forEach(q => {
+        const val = document.querySelector(`input[name='q${q.번호}']:checked`);
+        if (!val) {
+          unanswered.push(q.번호);
+        } else {
+          scores[q.분류] = (scores[q.분류] || 0) + parseInt(val.value);
+        }
+      });
+
+      if (unanswered.length > 0) {
+        alert(`다음 문항에 응답하지 않았습니다: ${unanswered.join(', ')}`);
+        return;
+      }
+
+      const chartCanvas = document.getElementById('scoreChart');
+      const chartDataURL = chartCanvas.toDataURL("image/png");
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, '-');
+      const resultText = `설문 완료 시각: ${now.toLocaleString()}\n이름: ${name}\n성별: ${gender}\n생년월일: ${birth}\n\n[점수 요약]\n${['CP','NP','A','FC','AC'].map(k => `${k}: ${scores[k] || 0}점`).join('\n')}`;
+      const baseFilename = `설문결과_${name}_${timestamp}`;
+
+      const textBlob = new Blob([resultText], { type: 'text/plain' });
+
+      fetch(chartDataURL)
+        .then(res => res.blob())
+        .then(imageBlob => {
+          const formData = new FormData();
+          formData.append('files', textBlob, encodeURIComponent(`${baseFilename}.txt`));
+          formData.append('files', imageBlob, encodeURIComponent(`${baseFilename}.png`));
+
+          return fetch('/upload', {
+            method: 'POST',
+            body: formData
+          });
+        })
+        .then(() => {
+          console.log("업로드 완료");
+          location.reload();
+        })
+        .catch(err => console.error("업로드 실패", err));
+    }
+
+    function autoFill() {
+      questions.forEach(q => {
+        const radios = document.getElementsByName(`q${q.번호}`);
+        if (radios.length > 0) {
+          const randomIndex = Math.floor(Math.random() * radios.length);
+          radios[randomIndex].checked = true;
+        }
+      });
+    }
+
+    window.addEventListener("message", (event) => {
+      const { name, gender, birth, scores, timestamp, chartDataURL } = event.data;
+      const now = new Date();
+
+      const resultText = `설문 완료 시각: ${now.toLocaleString()}\n이름: ${name}\n성별: ${gender}\n생년월일: ${birth}\n\n[점수 요약]\n${['CP','NP','A','FC','AC'].map(k => `${k}: ${scores[k] || 0}점`).join('\n')}`;
+      const textBlob = new Blob([resultText], { type: 'text/plain' });
+
+      const chartImage = new Image();
+      chartImage.src = chartDataURL;
+      chartImage.onload = () => {
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = 800;
+        exportCanvas.height = 600;
+        const ctx2 = exportCanvas.getContext('2d');
+        ctx2.fillStyle = '#fff';
+        ctx2.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+        ctx2.drawImage(chartImage, 0, 0, 800, 400);
+
+        ctx2.fillStyle = '#000';
+        ctx2.font = '16px Arial';
+        let y = 420;
+        ctx2.fillText(`이름: ${name}`, 10, y);
+        ctx2.fillText(`성별: ${gender}`, 200, y);
+        ctx2.fillText(`생년월일: ${birth}`, 400, y);
+        y += 30;
+        ['CP','NP','A','FC','AC'].forEach(k => {
+          ctx2.fillText(`${k}: ${scores[k] || 0}점`, 10, y);
+          y += 20;
+        });
+
+        exportCanvas.toBlob(imageBlob => {
+          const baseFilename = `설문결과_${name}_${timestamp}`;
+          const formData = new FormData();
+          formData.append('files', textBlob, encodeURIComponent(`${baseFilename}.txt`));
+          formData.append('files', imageBlob, encodeURIComponent(`${baseFilename}.png`));
+
+          fetch('/upload', {
+            method: 'POST',
+            body: formData
+          })
+          .then(() => {
+            console.log("업로드 완료");
+            location.reload();
+          })
+          .catch(err => console.error("업로드 실패", err));
+        }, 'image/png');
+      };
+    });
+  </script>
+</body>
+</html>
